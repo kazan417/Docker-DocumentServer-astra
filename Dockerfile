@@ -1,8 +1,5 @@
-ARG BASE_VERSION=24.04
 
-ARG BASE_IMAGE=ubuntu:$BASE_VERSION
-
-FROM ${BASE_IMAGE} AS documentserver
+FROM registry.astralinux.ru/astra/ubi18 AS documentserver
 LABEL maintainer Ascensio System SIA <support@onlyoffice.com>
 
 ARG BASE_VERSION
@@ -23,82 +20,15 @@ ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8 DEBIAN_FRONTEND=nonint
 
 ARG ONLYOFFICE_VALUE=onlyoffice
 
-RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d && \
-    apt-get -y update && \
-    apt-get -yq install wget apt-transport-https gnupg locales lsb-release && \
-    wget -q -O /etc/apt/sources.list.d/mssql-release.list "https://packages.microsoft.com/config/ubuntu/$BASE_VERSION/prod.list" && \
-    wget -q -O /tmp/microsoft.asc https://packages.microsoft.com/keys/microsoft.asc && \
-    apt-key add /tmp/microsoft.asc && \
-    gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg < /tmp/microsoft.asc && \
-    apt-get -y update && \
-    locale-gen en_US.UTF-8 && \
-    echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections && \
-    ACCEPT_EULA=Y apt-get -yq install \
-        adduser \
-        apt-utils \
-        bomstrip \
-        certbot \
-        cron \
-        curl \
-        htop \
-        libaio1${PACKAGE_SUFFIX} \
-        libasound2${PACKAGE_SUFFIX} \
-        libboost-regex-dev \
-        libcairo2 \
-        libcurl3-gnutls \
-        libcurl4 \
-        libgtk-3-0 \
-        libnspr4 \
-        libnss3 \
-        libstdc++6 \
-        libxml2 \
-        libxss1 \
-        libxtst6 \
-        mssql-tools18 \
-        mysql-client \
-        nano \
-        net-tools \
-        netcat-openbsd \
-        nginx-extras \
-        postgresql \
-        postgresql-client \
-        pwgen \
-        rabbitmq-server \
-        redis-server \
-        sudo \
-        supervisor \
-        ttf-mscorefonts-installer \
-        unixodbc-dev \
-        unzip \
-        xvfb \
-        xxd \
-        zlib1g || dpkg --configure -a && \
-    # Added dpkg --configure -a to handle installation issues with rabbitmq-server on arm64 architecture
-    if [  $(ls -l /usr/share/fonts/truetype/msttcorefonts | wc -l) -ne 61 ]; \
-        then echo 'msttcorefonts failed to download'; exit 1; fi  && \
-    echo "SERVER_ADDITIONAL_ERL_ARGS=\"+S 1:1\"" | tee -a /etc/rabbitmq/rabbitmq-env.conf && \
-    sed -i "s/bind .*/bind 127.0.0.1/g" /etc/redis/redis.conf && \
-    sed 's|\(application\/zip.*\)|\1\n    application\/wasm wasm;|' -i /etc/nginx/mime.types && \
-    pg_conftool $PG_VERSION main set listen_addresses 'localhost' && \
-    service postgresql restart && \
-    sudo -u postgres psql -c "CREATE USER $ONLYOFFICE_VALUE WITH password '$ONLYOFFICE_VALUE';" && \
-    sudo -u postgres psql -c "CREATE DATABASE $ONLYOFFICE_VALUE OWNER $ONLYOFFICE_VALUE;" && \
-    wget -O basic.zip ${OC_DOWNLOAD_URL}/instantclient-basic-linux.x64-${OC_FILE_SUFFIX}.zip && \
-    wget -O sqlplus.zip ${OC_DOWNLOAD_URL}/instantclient-sqlplus-linux.x64-${OC_FILE_SUFFIX}.zip && \
-    unzip -d /usr/share basic.zip && \
-    unzip -d /usr/share sqlplus.zip && \
-    mv /usr/share/instantclient_${OC_VER_DIR} /usr/share/instantclient && \
-    service postgresql stop && \
-    service redis-server stop && \
-    service rabbitmq-server stop && \
-    service supervisor stop && \
-    service nginx stop && \
-    rm -rf /var/lib/apt/lists/*
+#RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d 
+
 
 COPY config/supervisor/supervisor /etc/init.d/
 COPY config/supervisor/ds/*.conf /etc/supervisor/conf.d/
 COPY run-document-server.sh /app/ds/run-document-server.sh
 COPY oracle/sqlplus /usr/bin/sqlplus
+COPY onlyoffice-documentserver_8.3.2-3_amd64.deb /
+COPY ttf-mscorefonts-installer_3.6_all.deb /
 
 EXPOSE 80 443
 
@@ -115,21 +45,17 @@ ENV COMPANY_NAME=$COMPANY_NAME \
     DS_PLUGIN_INSTALLATION=false \
     DS_DOCKER_INSTALLATION=true
 
-RUN PACKAGE_FILE="${COMPANY_NAME}-${PRODUCT_NAME}${PRODUCT_EDITION}${PACKAGE_VERSION:+_$PACKAGE_VERSION}_${TARGETARCH:-$(dpkg --print-architecture)}.deb" && \
-    wget -q -P /tmp "$PACKAGE_BASEURL/$PACKAGE_FILE" && \
-    apt-get -y update && \
-    service postgresql start && \
-    apt-get -yq install /tmp/$PACKAGE_FILE && \
-    service postgresql stop && \
+RUN     apt-get -y update && \
+    DEBIAN_FRONTEND=noninteractive DS_DOCKER_INSTALLATION=1 apt-get install  /ttf-mscorefonts-installer_3.6_all.deb /onlyoffice-documentserver_8.3.2-3_amd64.deb  -y  && \
     chmod 755 /etc/init.d/supervisor && \
     sed "s/COMPANY_NAME/${COMPANY_NAME}/g" -i /etc/supervisor/conf.d/*.conf && \
     service supervisor stop && \
     chmod 755 /app/ds/*.sh && \
-    printf "\nGO" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/mssql/createdb.sql" && \
-    printf "\nGO" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/mssql/removetbl.sql" && \
-    printf "\nexit" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/oracle/createdb.sql" && \
-    printf "\nexit" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/oracle/removetbl.sql" && \
-    rm -f /tmp/$PACKAGE_FILE && \
+#    printf "\nGO" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/mssql/createdb.sql" && \
+#    printf "\nGO" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/mssql/removetbl.sql" && \
+#    printf "\nexit" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/oracle/createdb.sql" && \
+#    printf "\nexit" >> "/var/www/$COMPANY_NAME/documentserver/server/schema/oracle/removetbl.sql" && \
+    rm -f /onlyoffice-documentserver_8.3.2-3_amd64.deb && \
     rm -rf /var/log/$COMPANY_NAME && \
     rm -rf /var/lib/apt/lists/*
 
