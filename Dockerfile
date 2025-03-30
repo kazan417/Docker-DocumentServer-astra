@@ -23,7 +23,7 @@ ARG ONLYOFFICE_VALUE=onlyoffice
 #RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d 
 
 
-COPY config/supervisor/supervisor /etc/init.d/
+
 COPY config/supervisor/ds/*.conf /etc/supervisor/conf.d/
 COPY run-document-server.sh /app/ds/run-document-server.sh
 COPY oracle/sqlplus /usr/bin/sqlplus
@@ -46,7 +46,8 @@ ENV COMPANY_NAME=$COMPANY_NAME \
     DS_DOCKER_INSTALLATION=true
 
 RUN     apt-get -y update && \
-    DEBIAN_FRONTEND=noninteractive DS_DOCKER_INSTALLATION=1 apt-get install  /ttf-mscorefonts-installer_3.6_all.deb /onlyoffice-documentserver_8.3.2-3_amd64.deb  -y  && \
+    DEBIAN_FRONTEND=noninteractive DS_DOCKER_INSTALLATION=1 apt-get install  /ttf-mscorefonts-installer_3.6_all.deb \
+    netcat-openbsd /onlyoffice-documentserver_8.3.2-3_amd64.deb unzip cron libaio1 libboost-regex-dev libnspr4 libnss3 net-tools sudo supervisor unixodbc-dev -y  && \
     chmod 755 /etc/init.d/supervisor && \
     sed "s/COMPANY_NAME/${COMPANY_NAME}/g" -i /etc/supervisor/conf.d/*.conf && \
     service supervisor stop && \
@@ -58,7 +59,7 @@ RUN     apt-get -y update && \
     rm -f /onlyoffice-documentserver_8.3.2-3_amd64.deb && \
     rm -rf /var/log/$COMPANY_NAME && \
     rm -rf /var/lib/apt/lists/*
-
+    COPY config/supervisor/supervisor /etc/init.d/
 VOLUME /var/log/$COMPANY_NAME /var/lib/$COMPANY_NAME /var/www/$COMPANY_NAME/Data /var/lib/postgresql /var/lib/rabbitmq /var/lib/redis /usr/share/fonts/truetype/custom
 
 ENTRYPOINT ["/app/ds/run-document-server.sh"]
